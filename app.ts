@@ -2,7 +2,7 @@ import { serve } from 'bun';
 
 // --- CONFIGURATION ---
 const PORT = process.env.PORT || 3000;
-const CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 12 hours
+const CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour
 const GITLAB_URL = process.env.GITLAB_URL || 'https://gitlab.redox-os.org';
 const GITLAB_PRIVATE_TOKEN = process.env.GITLAB_PRIVATE_TOKEN; // Optional, but recommended for higher rate limits
 const ARTIFACT_URL = 'https://static.redox-os.org/pkg/';
@@ -384,7 +384,8 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
     </div>
     
     <div class="footer">
-        Last updated: ${new Date().toLocaleString()}
+        Last updated: ${lastCacheTime.toLocaleString()} (${humanize(Date.now() - lastCacheTime.getTime())}) &mdash;
+        <a href="https://github.com/willnode/redox-ci-status" target="_blank">Source code</a>
     </div>
 </body>
 </html>`;
