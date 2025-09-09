@@ -384,7 +384,7 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
     </div>
     
     <div class="footer">
-        Last updated: ${lastCacheTime.toLocaleString()} (${humanize(Date.now() - lastCacheTime.getTime())}) &mdash;
+        Last updated: ${new Date(lastCacheTime).toLocaleString()} (${humanize(Date.now() - new Date(lastCacheTime).getTime())}) &mdash;
         <a href="https://github.com/willnode/redox-ci-status" target="_blank">Source code</a>
     </div>
 </body>
