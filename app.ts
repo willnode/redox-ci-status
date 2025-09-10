@@ -404,7 +404,7 @@ function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: ArtifactInfo[]
                 </tr>
             </thead>
             <tbody>
-                ${artifactPkgTableRows}
+                ${artifactImgTableRows}
             </tbody>
         </table>
     </div>
