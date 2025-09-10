@@ -5,7 +5,8 @@ const PORT = process.env.PORT || 3000;
 const CACHE_DURATION_MS = 1 * 60 * 60 * 1000; // 1 hour
 const GITLAB_URL = process.env.GITLAB_URL || 'https://gitlab.redox-os.org';
 const GITLAB_PRIVATE_TOKEN = process.env.GITLAB_PRIVATE_TOKEN; // Optional, but recommended for higher rate limits
-const ARTIFACT_URL = 'https://static.redox-os.org/pkg/';
+const ARTIFACT_PKG_URL = 'https://static.redox-os.org/pkg/';
+const ARTIFACT_IMG_URL = 'https://static.redox-os.org/img/';
 const ARTIFACT_STALE_HOURS = 48;
 
 // Hardcoded list of projects to track
@@ -31,7 +32,8 @@ const PROJECTS_TO_TRACK = [
 
 // --- IN-MEMORY CACHE ---
 let cachedGitlabData: ProjectInfo[] | null = null;
-let cachedArtifactData: ArtifactInfo[] | null = null;
+let cachedArtifactPkgData: ArtifactInfo[] | null = null;
+let cachedArtifactImgData: ArtifactInfo[] | null = null;
 let lastCacheTime = 0;
 
 interface ProjectInfo {
@@ -111,10 +113,10 @@ async function fetchGitLabData(): Promise<ProjectInfo[]> {
  * Fetches and parses the artifact server directory listing.
  * @returns {Promise<ArtifactInfo[]>} A promise that resolves to an array of artifact information.
  */
-async function fetchArtifactStatus(): Promise<ArtifactInfo[]> {
+async function fetchArtifactStatus(url: string): Promise<ArtifactInfo[]> {
     console.log("Fetching artifact status from Apache server index...");
     try {
-        const response = await fetch(ARTIFACT_URL);
+        const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`Failed to fetch artifact page: ${response.status} ${response.statusText}`);
         }
@@ -133,7 +135,7 @@ async function fetchArtifactStatus(): Promise<ArtifactInfo[]> {
 
             results.push({
                 name,
-                url: `${ARTIFACT_URL}${name}`,
+                url: `${url}${name}`,
                 lastModified: lastModifiedDate.toISOString(),
                 isStale: hoursDiff > ARTIFACT_STALE_HOURS,
             });
@@ -233,10 +235,10 @@ function getArtifactStatusBadge(isStale: boolean): string {
 /**
  * Generates the full HTML page to display the project statuses.
  * @param {ProjectInfo[]} gitlabData - The array of project data to render.
- * @param {ArtifactInfo[]} artifactData - The array of artifact data to render.
+ * @param {ArtifactInfo[]} artifactPkgData - The array of artifact data to render.
  * @returns {string} A complete HTML document as a string.
  */
-function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): string {
+function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: ArtifactInfo[], artifactImgData: ArtifactInfo[]): string {
     const gitlabTableRows = gitlabData.map(repo => `
         <tr>
             <td><a href="${repo.url}" data-id="${repo.id}" target="_blank" rel="noopener noreferrer">${repo.name}</a></td>
@@ -247,7 +249,15 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
         </tr>
     `).join('');
 
-    const artifactTableRows = artifactData.map(artifact => `
+    const artifactPkgTableRows = artifactPkgData.map(artifact => `
+         <tr>
+            <td><a href="${artifact.url}" target="_blank" rel="noopener noreferrer">${artifact.name}</a></td>
+            <td>${getArtifactStatusBadge(artifact.isStale)}</td>
+            <td>${humanize(Date.now() - new Date(artifact.lastModified).getTime())}</td>
+        </tr>
+    `).join('');
+
+    const artifactImgTableRows = artifactImgData.map(artifact => `
          <tr>
             <td><a href="${artifact.url}" target="_blank" rel="noopener noreferrer">${artifact.name}</a></td>
             <td>${getArtifactStatusBadge(artifact.isStale)}</td>
@@ -276,7 +286,7 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
             background-color: #fff;
             border-radius: 8px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            overflow: hidden;
+            overflow: auto;
         }
         h1, h2 {
             padding: 1.5rem;
@@ -349,7 +359,7 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
 <body>
     <div class="container">
         <h1>Redox OS Dashboard</h1>
-        
+
         <h2>GitLab CI Status</h2>
         <table>
             <thead>
@@ -368,21 +378,37 @@ function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): 
     </div>
 
     <div class="container">
-        <h2>Jenkins Artifacts</h2>
+        <h2>Packages Status</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Artifact Target</th>
+                    <th>Target</th>
                     <th>Status</th>
                     <th>Last Updated</th>
                 </tr>
             </thead>
             <tbody>
-                ${artifactTableRows}
+                ${artifactPkgTableRows}
             </tbody>
         </table>
     </div>
-    
+
+    <div class="container">
+        <h2>Image Status</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Target</th>
+                    <th>Status</th>
+                    <th>Last Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${artifactPkgTableRows}
+            </tbody>
+        </table>
+    </div>
+
     <div class="footer">
         Last updated: ${new Date(lastCacheTime).toLocaleString()} (${humanize(Date.now() - new Date(lastCacheTime).getTime())}) &mdash;
         <a href="https://github.com/willnode/redox-ci-status" target="_blank">Source code</a>
@@ -403,19 +429,21 @@ serve({
         const now = Date.now();
         
         // Check if cache is still valid
-        if (cachedGitlabData && cachedArtifactData && (now - lastCacheTime < CACHE_DURATION_MS)) {
+        if (cachedGitlabData && cachedArtifactPkgData && cachedArtifactImgData && (now - lastCacheTime < CACHE_DURATION_MS)) {
             console.log("Serving response from cache.");
         } else {
             console.log("Cache expired or empty. Fetching new data...");
             try {
                 // Fetch both GitLab and artifact data in parallel
-                const [gitlabData, artifactData] = await Promise.all([
+                const [gitlabData, artifactPkgData, artifactImgData] = await Promise.all([
                     fetchGitLabData(),
-                    fetchArtifactStatus()
+                    fetchArtifactStatus(ARTIFACT_PKG_URL),
+                    fetchArtifactStatus(ARTIFACT_IMG_URL),
                 ]);
 
                 cachedGitlabData = gitlabData;
-                cachedArtifactData = artifactData;
+                cachedArtifactPkgData = artifactPkgData;
+                cachedArtifactImgData = artifactImgData;
                 lastCacheTime = now;
                 console.log("Successfully fetched and cached new data.");
             } catch (error: any) {
@@ -428,7 +456,7 @@ serve({
             }
         }
         
-        const html = generateHtml(cachedGitlabData || [], cachedArtifactData || []);
+        const html = generateHtml(cachedGitlabData || [], cachedArtifactPkgData || [], cachedArtifactImgData || []);
         return new Response(html, {
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });
