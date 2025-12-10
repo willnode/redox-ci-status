@@ -11,21 +11,23 @@ const ARTIFACT_STALE_HOURS = 48;
 
 // Hardcoded list of projects to track
 const PROJECTS_TO_TRACK = [
+// critical
     'redox-os/redox',
     'redox-os/relibc',
-    'redox-os/cookbook',
-    'redox-os/installer',
-    'redox-os/pkgutils',
-    'redox-os/kernel',
-    'redox-os/drivers',
     'redox-os/base',
-    'redox-os/redoxfs',
     'redox-os/bootloader',
+    'redox-os/kernel',
+    'redox-os/redoxfs',
+// non-critical
     'redox-os/acid',
-    'redox-os/redoxer',
+    'redox-os/coreutils',
+    'redox-os/extrautils',
+    'redox-os/installer',
     'redox-os/orbital',
     'redox-os/orbutils',
-    'redox-os/extrautils',
+    'redox-os/pkgutils',
+    'redox-os/redoxer',
+// website
     'redox-os/book',
     'redox-os/website',
 ];
