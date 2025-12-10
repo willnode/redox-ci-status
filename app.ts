@@ -82,7 +82,8 @@ async function fetchGitLabData(): Promise<ProjectInfo[]> {
             const project = await projectResponse.json() as any;
 
             // 2. Fetch latest pipeline
-            const pipelineResponse = await fetch(`${GITLAB_URL}/api/v4/projects/${project.id}/pipelines?per_page=1&page=1&ref=master`, { headers });
+            const branch = projectPath == 'redox-os/base' ? 'main' : 'master';
+            const pipelineResponse = await fetch(`${GITLAB_URL}/api/v4/projects/${project.id}/pipelines?per_page=1&page=1&ref=${branch}`, { headers });
             const pipelines = await pipelineResponse.json();
             const latestPipeline = pipelines?.[0];
 
@@ -95,8 +96,8 @@ async function fetchGitLabData(): Promise<ProjectInfo[]> {
                 name: project.name_with_namespace,
                 url: project.web_url,
                 status: latestPipeline?.status || 'no-pipelines',
-		pipelineUrl: latestPipeline?.web_url,
-		id: project.id,
+                pipelineUrl: latestPipeline?.web_url,
+                id: project.id,
                 commit: latestCommit ? {
                     message: latestCommit.title, author: latestCommit.author_name, date: latestCommit.created_at, // Keep as ISO string for parsing later
                 } : null,
@@ -131,6 +132,9 @@ async function fetchArtifactStatus(url: string): Promise<ArtifactInfo[]> {
 
         while ((match = regex.exec(html)) !== null) {
             const name = match[1];
+            if (name.includes('i686')) {
+                continue;
+            } 
             const dateString = match[2];
             const lastModifiedDate = new Date(dateString);
             const hoursDiff = (Date.now() - lastModifiedDate.getTime()) / (1000 * 60 * 60);
