@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "start": "bun ./app.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.3.4"
+  }
+}
