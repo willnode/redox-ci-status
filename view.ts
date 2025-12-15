@@ -1,14 +1,14 @@
 import { ARTIFACT_STALE_HOURS, lastCacheTime } from './app';
 import type { ProjectInfo, ArtifactInfo } from './app';
-
+import css from './style.css'  with { type: "text" };
 
 /**
  * Generates the full HTML page to display the project statuses.
  * @param {ProjectInfo[]} gitlabData - The array of project data to render.
- * @param {ArtifactInfo[]} artifactPkgData - The array of artifact data to render.
+ * @param {ArtifactInfo[]} artifactData - The array of pkg artifact data to render.
  * @returns {string} A complete HTML document as a string.
  */
-export function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: ArtifactInfo[], artifactImgData: ArtifactInfo[]): string {
+export function generateHtml(gitlabData: ProjectInfo[], artifactData: ArtifactInfo[]): string {
     const gitlabTableRows = gitlabData.map(repo => `
         <tr>
             <td><a href="${repo.url}" data-id="${repo.id}" target="_blank" rel="noopener noreferrer">${repo.name}</a></td>
@@ -19,21 +19,67 @@ export function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: Artifac
         </tr>
     `).join('');
 
-    const artifactPkgTableRows = artifactPkgData.map(artifact => `
-         <tr>
-            <td><a href="${artifact.url}" target="_blank" rel="noopener noreferrer">${artifact.name}</a></td>
-            <td>${getArtifactStatusBadge(artifact.isStale)}</td>
-            <td>${humanize(Date.now() - new Date(artifact.lastModified).getTime())}</td>
-        </tr>
-    `).join('');
 
-    const artifactImgTableRows = artifactImgData.map(artifact => `
-         <tr>
-            <td><a href="${artifact.url}" target="_blank" rel="noopener noreferrer">${artifact.name}</a></td>
-            <td>${getArtifactStatusBadge(artifact.isStale)}</td>
-            <td>${humanize(Date.now() - new Date(artifact.lastModified).getTime())}</td>
-        </tr>
-    `).join('');
+    const artifactTableRows = artifactData.map(artifact => {
+        let packagesList = artifact.packages.map(x => {
+            let pkg_commit = x.toml?.source_identifier.substring(0, 7) || '-';
+            let rpo_commit = x.project.commit?.id.substring(0, 7) || '-';
+            return `<div class="item ${pkg_commit == rpo_commit ? 'latest' : (x.toml?.time_identifier &&
+                ((Date.now() - new Date(x.toml.time_identifier).getTime()) < 1000 * 60 * 60 * ARTIFACT_STALE_HOURS) ? 'pending' : 'outdated')}">
+                <h4>${x.name}</h4>
+                 <div> 
+                ${pkg_commit == rpo_commit ?
+                    `<a href="${x.toml_path}" target="_blank">${pkg_commit}</a> (<a href="${x.project.url}/-/commits/${x.branch}" target="_blank">latest</a>)` :
+                    `<a href="${x.toml_path}" target="_blank">${pkg_commit}</a> vs <a href="${x.project.url}/-/commits/${x.branch}" target="_blank">${rpo_commit}</a>`}
+                 </div>
+                 <div>
+                    published ${x.toml?.time_identifier ? humanize(Date.now() - new Date(x.toml.time_identifier).getTime()) : 'N/A'}
+                 </div>
+            </div>`
+        })
+        let outdatedList = Object.entries(artifact.repository.outdated_packages).map(([name, src]) => {
+            return `<div class="item outdated">
+                <h4>${name}</h4>
+                <div>
+                    since ${src.time_identifier ? humanize(Date.now() - new Date(src.time_identifier).getTime()) : 'N/A'}
+                 </div>
+            </div>`
+        })
+        let outdated_packages_len = Object.keys(artifact.repository.outdated_packages).length;
+        let all_packages_len = Object.keys({ ...artifact.repository.packages, ...artifact.repository.outdated_packages }).length;
+        return `
+        <div class="artifact">
+            <div class="head">
+                <h3>${artifact.name}</h3>
+                <div>
+                    <h4>Package ${getArtifactStatusBadge(artifact.pkgIsStale)}</h4>
+                    <p><a href="${artifact.pkgUrl}" target="_blank" rel="noopener noreferrer">
+                        ${humanize(Date.now() - new Date(artifact.pkgLastModified).getTime())}
+                    </a></p>
+                </div>
+                <div>
+                    <h4>Repository (${all_packages_len - outdated_packages_len} / ${all_packages_len})</h4>
+                    <p><a href="${artifact.repositoryPath}" target="_blank" rel="noopener noreferrer">
+                        ${outdated_packages_len} outdated packages
+                    </a></p>
+                </div>
+                <div>
+                    <h4>Image ${getArtifactStatusBadge(artifact.imgIsStale)}</h4>
+                    <p><a href="${artifact.imgUrl}" target="_blank" rel="noopener noreferrer">
+                        ${humanize(Date.now() - new Date(artifact.imgLastModified).getTime())}
+                    </a></p>
+                </div>
+            </div>
+            <div class="core-packages">
+                ${packagesList.join('')}
+            </div>
+            ${outdatedList.length > 0 ? `
+            <h4 style="text-align: center">Outdated Packages</h4>
+                <div class="outdated-packages">
+                ${outdatedList.join('')}
+            </div>` : ''}
+        </div>
+    `}).join('');
 
     return `
 <!DOCTYPE html>
@@ -41,94 +87,15 @@ export function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: Artifac
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redox OS Dashboard</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: #f8f9fa;
-            color: #333;
-            margin: 0;
-            padding: 2rem;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto 2rem auto;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-            overflow: auto;
-        }
-        h1, h2 {
-            padding: 1.5rem;
-            margin: 0;
-            color: white;
-            border-bottom: 1px solid #ddd;
-        }
-        h1 {
-            text-align: center;
-            background-color: #4a4a4a;
-        }
-        h2 {
-            background-color: #6c757d;
-            font-size: 1.5em;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 1rem;
-            text-align: left;
-            border-bottom: 1px solid #dee2e6;
-        }
-        th {
-            background-color: #f1f3f5;
-            font-weight: 600;
-        }
-        tr:last-child td {
-            border-bottom: none;
-        }
-        tr:hover {
-            background-color: #f8f9fa;
-        }
-        a {
-            color: #0052cc;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        a:hover {
-            text-decoration: underline;
-        }
-        .status {
-            display: inline-block;
-            padding: 0.3em 0.6em;
-            font-size: 0.8em;
-            font-weight: 700;
-            line-height: 1;
-            color: #fff;
-            text-align: center;
-            white-space: nowrap;
-            vertical-align: baseline;
-            border-radius: 0.25rem;
-            text-transform: capitalize;
-        }
-        .commit-msg {
-            max-width: 300px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .footer {
-            padding: 1rem;
-            text-align: center;
-            font-size: 0.9em;
-            color: #888;
-        }
-    </style>
+    <title>Redox OS CI Dashboard</title>
+    <style>${css}</style>
 </head>
 <body>
     <div class="container">
-        <h1>Redox OS Dashboard</h1>
+        <h1>Redox OS CI Dashboard</h1>
+
+        <h2>Packages Status</h2>
+        ${artifactTableRows}
 
         <h2>GitLab CI Status</h2>
         <table>
@@ -144,39 +111,7 @@ export function generateHtml(gitlabData: ProjectInfo[], artifactPkgData: Artifac
             <tbody>
                 ${gitlabTableRows}
             </tbody>
-        </table>
-    </div>
-
-    <div class="container">
-        <h2>Packages Status</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Target</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${artifactPkgTableRows}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="container">
-        <h2>Image Status</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Target</th>
-                    <th>Status</th>
-                    <th>Last Updated</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${artifactImgTableRows}
-            </tbody>
-        </table>
+        </table> 
     </div>
 
     <div class="footer">

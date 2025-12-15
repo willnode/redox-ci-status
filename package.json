@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "dev": "bun --hot ./app.ts",
     "start": "bun ./app.ts"
   },
   "dependencies": {},

@@ -1,4 +1,4 @@
-import { serve } from 'bun';
+import { serve, TOML } from 'bun';
 import { generateHtml } from './view';
 
 // --- CONFIGURATION ---
@@ -8,44 +8,49 @@ const GITLAB_URL = process.env.GITLAB_URL || 'https://gitlab.redox-os.org';
 const GITLAB_PRIVATE_TOKEN = process.env.GITLAB_PRIVATE_TOKEN; // Optional, but recommended for higher rate limits
 const ARTIFACT_PKG_URL = 'https://static.redox-os.org/pkg/';
 const ARTIFACT_IMG_URL = 'https://static.redox-os.org/img/';
-export const ARTIFACT_STALE_HOURS = 48;
+export const ARTIFACT_STALE_HOURS = 24;
 
 // Hardcoded list of projects to track
 const PROJECTS_TO_TRACK = [
     // critical
-    { path: 'redox-os/redox', branch: 'master', pkg: 'redox' },
-    { path: 'redox-os/relibc', branch: 'master', pkg: 'relibc' },
-    { path: 'redox-os/base', branch: 'master', pkg: 'base' },
-    { path: 'redox-os/bootloader', branch: 'master', pkg: 'bootloader' },
-    { path: 'redox-os/kernel', branch: 'master', pkg: 'kernel' },
-    { path: 'redox-os/redoxfs', branch: 'master', pkg: 'redoxfs' },
+    { path: 'redox-os/redox', branch: 'master', pkg: [] },
+    { path: 'redox-os/relibc', branch: 'master', pkg: ['relibc'] },
+    { path: 'redox-os/base', branch: 'main', pkg: ['base', 'base-initfs'] },
+    { path: 'redox-os/bootloader', branch: 'master', pkg: ['bootloader'] },
+    { path: 'redox-os/kernel', branch: 'master', pkg: ['kernel'] },
+    { path: 'redox-os/redoxfs', branch: 'master', pkg: ['redoxfs'] },
     // non-critical
-    { path: 'redox-os/acid', branch: 'master', pkg: 'acid' },
-    { path: 'redox-os/coreutils', branch: 'master', pkg: 'coreutils' },
-    { path: 'redox-os/extrautils', branch: 'master', pkg: 'extrautils' },
-    { path: 'redox-os/installer', branch: 'master', pkg: 'installer' },
-    { path: 'redox-os/orbital', branch: 'master', pkg: 'orbital' },
-    { path: 'redox-os/orbutils', branch: 'master', pkg: 'orbutils' },
-    { path: 'redox-os/pkgutils', branch: 'master', pkg: 'pkgutils' },
-    { path: 'redox-os/redoxer', branch: 'master', pkg: 'redoxer' },
+    { path: 'redox-os/acid', branch: 'master', pkg: ['acid'] },
+    { path: 'redox-os/coreutils', branch: 'master', pkg: ['coreutils'] },
+    { path: 'redox-os/extrautils', branch: 'master', pkg: ['extrautils'] },
+    { path: 'redox-os/installer', branch: 'master', pkg: [] },
+    { path: 'redox-os/orbital', branch: 'master', pkg: ['orbital'] },
+    { path: 'redox-os/orbutils', branch: 'master', pkg: ['orbutils'] },
+    { path: 'redox-os/pkgutils', branch: 'master', pkg: ['pkgutils'] },
+    { path: 'redox-os/redoxer', branch: 'master', pkg: [] },
     // website
-    { path: 'redox-os/book', branch: 'master', pkg: 'book' },
-    { path: 'redox-os/website', branch: 'master', pkg: 'website' },
+    { path: 'redox-os/book', branch: 'master', pkg: [] },
+    { path: 'redox-os/website', branch: 'master', pkg: [] },
 ];
+
+const ARTIFACTS_TO_TRACK = [
+    "x86_64", "aarch64", "i586", "riscv64gc"
+]
 
 // --- IN-MEMORY CACHE ---
 let cachedGitlabData: ProjectInfo[] | null = null;
-let cachedArtifactPkgData: ArtifactInfo[] | null = null;
-let cachedArtifactImgData: ArtifactInfo[] | null = null;
+let cachedArtifactData: ArtifactInfo[] | null = null;
 export let lastCacheTime = 0;
 
 export interface ProjectInfo {
     id: string;
     name: string;
+    path: string;
     url: string;
     status: string;
     pipelineUrl: string;
     commit: {
+        id: string,
         message: string;
         author: string;
         date: string;
@@ -54,9 +59,31 @@ export interface ProjectInfo {
 
 export interface ArtifactInfo {
     name: string;
-    url: string;
-    lastModified: string;
-    isStale: boolean;
+    pkgUrl: string;
+    pkgLastModified: string;
+    pkgIsStale: boolean;
+    imgUrl: string;
+    imgLastModified: string;
+    imgIsStale: boolean;
+    packages: {
+        name: string,
+        branch: string,
+        toml_path: string,
+        project: ProjectInfo,
+        toml: PackageToml | null,
+    }[],
+    repositoryPath: string,
+    repository: RepoToml,
+}
+
+export interface RepoToml {
+    packages: Record<string, string>,
+    outdated_packages: Record<string, PackageToml>,
+}
+export interface PackageToml {
+    source_identifier: string,
+    commit_identifier: string,
+    time_identifier: string,
 }
 
 /**
@@ -96,12 +123,16 @@ async function fetchGitLabData(): Promise<ProjectInfo[]> {
 
             return {
                 name: project.name_with_namespace,
+                path,
                 url: project.web_url,
                 status: latestPipeline?.status || 'no-pipelines',
                 pipelineUrl: latestPipeline?.web_url,
                 id: project.id,
                 commit: latestCommit ? {
-                    message: latestCommit.title, author: latestCommit.author_name, date: latestCommit.created_at, // Keep as ISO string for parsing later
+                    id: latestCommit.id,
+                    message: latestCommit.title,
+                    author: latestCommit.author_name,
+                    date: latestCommit.created_at, // Keep as ISO string for parsing later
                 } : null,
             };
         } catch (error) {
@@ -114,41 +145,93 @@ async function fetchGitLabData(): Promise<ProjectInfo[]> {
     return results.filter((p) => p !== null); // Filter out any projects that failed
 }
 
+async function download(url: string) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    }
+    return await response.text();
+}
+
 /**
  * Fetches and parses the artifact server directory listing.
  * @returns {Promise<ArtifactInfo[]>} A promise that resolves to an array of artifact information.
  */
-async function fetchArtifactStatus(url: string): Promise<ArtifactInfo[]> {
-    console.log("Fetching artifact status from Apache server index...");
+async function fetchArtifactStatus(gitlab: ProjectInfo[]): Promise<ArtifactInfo[]> {
+    console.log("Fetching artifact status from build server index...");
+
     try {
-        const response = await fetch(url);
-        if (!response.ok) {
-            throw new Error(`Failed to fetch artifact page: ${response.status} ${response.statusText}`);
-        }
-        const html = await response.text();
-        const results: ArtifactInfo[] = [];
-
-        // Regex to find directory rows and extract name and date
-        const regex = /<img src="\/icons\/folder.gif".*?<a href="([^"]+)">[^<]+<\/a>.*?<td align="right">([\d\-]{10} [\d:]{5})\s+<\/td>/g;
-        let match;
-
-        while ((match = regex.exec(html)) !== null) {
-            const name = match[1] || '';
-            if (name.includes('i686')) {
-                continue;
+        const htmlPkg = await download(ARTIFACT_PKG_URL);
+        const htmlImg = await download(ARTIFACT_IMG_URL);
+        const corePkgs = PROJECTS_TO_TRACK.flatMap(x => x.pkg.map(y => ({ name: y, path: x.path, branch: x.branch, project: gitlab.find(g => g.path == x.path) })));
+        const archPromises: Promise<null | ArtifactInfo>[] = ARTIFACTS_TO_TRACK.map(async (arch) => {
+            const regex = /<img src="\/icons\/folder.gif".*?<a href="([^"]+)">[^<]+<\/a>.*?<td align="right">([\d\-]{10} [\d:]{5})\s+<\/td>/g;
+            let match;
+            let arti: Partial<ArtifactInfo> = { name: arch };
+            while ((match = regex.exec(htmlPkg)) !== null) {
+                const name = match[1] || '';
+                if (!name.startsWith(arch)) {
+                    continue;
+                }
+                const dateString = match[2] || '';
+                const lastModifiedDate = new Date(dateString);
+                const hoursDiff = (Date.now() - lastModifiedDate.getTime()) / (1000 * 60 * 60);
+                arti.pkgUrl = `${ARTIFACT_PKG_URL}${name}`;
+                arti.pkgLastModified = lastModifiedDate.toISOString();
+                arti.pkgIsStale = hoursDiff > ARTIFACT_STALE_HOURS;
+                break;
             }
-            const dateString = match[2] || '';
-            const lastModifiedDate = new Date(dateString);
-            const hoursDiff = (Date.now() - lastModifiedDate.getTime()) / (1000 * 60 * 60);
+            regex.lastIndex = 0;
+            while ((match = regex.exec(htmlImg)) !== null) {
+                const name = match[1] || '';
+                if (!name.startsWith(arch)) {
+                    continue;
+                }
+                const dateString = match[2] || '';
+                const lastModifiedDate = new Date(dateString);
+                const hoursDiff = (Date.now() - lastModifiedDate.getTime()) / (1000 * 60 * 60);
+                arti.imgUrl = `${ARTIFACT_IMG_URL}${name}`;
+                arti.imgLastModified = lastModifiedDate.toISOString();
+                arti.imgIsStale = hoursDiff > ARTIFACT_STALE_HOURS;
+                break;
+            }
+            if (arti.pkgUrl) {
 
-            results.push({
-                name,
-                url: `${url}${name}`,
-                lastModified: lastModifiedDate.toISOString(),
-                isStale: hoursDiff > ARTIFACT_STALE_HOURS,
-            });
-        }
-        return results;
+                arti.repositoryPath = arti.pkgUrl + "repo.toml";
+                var tomlr_str = await download(arti.repositoryPath);
+                arti.repository = TOML.parse(tomlr_str) as RepoToml;
+                arti.repository = {
+                    packages: arti.repository.packages || {},
+                    outdated_packages: arti.repository.outdated_packages || {},
+                }
+
+                let pkgs = corePkgs.map(async (pkg) => {
+                    let toml_path = arti.pkgUrl + pkg.name + ".toml";
+                    console.log(toml_path);
+                    var toml_str = '', toml_parsed = null;
+                    try {
+                        toml_str = await download(toml_path);
+                        toml_parsed = TOML.parse(toml_str) as PackageToml;
+                    } catch { }
+                    return {
+                        name: pkg.name,
+                        branch: pkg.branch,
+                        project: pkg.project as ProjectInfo,
+                        toml_path,
+                        toml: toml_parsed,
+                    }
+                })
+
+                arti.packages = await Promise.all(pkgs);
+
+            }
+
+            return arti as ArtifactInfo;
+        })
+
+
+        const results = await Promise.all(archPromises);
+        return results.filter((p) => p !== null); // Filter out any projects that failed
     } catch (error) {
         console.error("Failed to fetch or parse artifact data:", error);
         return []; // Return empty array on failure
@@ -168,21 +251,16 @@ serve({
         const now = Date.now();
 
         // Check if cache is still valid
-        if (cachedGitlabData && cachedArtifactPkgData && cachedArtifactImgData && (now - lastCacheTime < CACHE_DURATION_MS)) {
+        if (cachedGitlabData && cachedArtifactData && (now - lastCacheTime < CACHE_DURATION_MS)) {
             console.log("Serving response from cache.");
         } else {
             console.log("Cache expired or empty. Fetching new data...");
             try {
                 // Fetch both GitLab and artifact data in parallel
-                const [gitlabData, artifactPkgData, artifactImgData] = await Promise.all([
-                    fetchGitLabData(),
-                    fetchArtifactStatus(ARTIFACT_PKG_URL),
-                    fetchArtifactStatus(ARTIFACT_IMG_URL),
-                ]);
-
+                const gitlabData = await fetchGitLabData();
+                const artifactPkgData = await fetchArtifactStatus(gitlabData);
                 cachedGitlabData = gitlabData;
-                cachedArtifactPkgData = artifactPkgData;
-                cachedArtifactImgData = artifactImgData;
+                cachedArtifactData = artifactPkgData;
                 lastCacheTime = now;
                 console.log("Successfully fetched and cached new data.");
             } catch (error: any) {
@@ -195,7 +273,7 @@ serve({
             }
         }
 
-        const html = generateHtml(cachedGitlabData || [], cachedArtifactPkgData || [], cachedArtifactImgData || []);
+        const html = generateHtml(cachedGitlabData, cachedArtifactData);
         return new Response(html, {
             headers: { 'Content-Type': 'text/html; charset=utf-8' },
         });

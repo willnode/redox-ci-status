@@ -1,0 +1,136 @@
+* {
+    box-sizing: border-box;
+}
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f8f9fa;
+    color: #333;
+    margin: 0;
+    padding: 2rem;
+}
+.container {
+    max-width: 1500px;
+    margin: 0 auto 2rem auto;
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    overflow: auto;
+}
+h1, h2 {
+    padding: 1.5rem;
+    margin: 0;
+    color: white;
+    border-bottom: 1px solid #ddd;
+}
+h1 {
+    text-align: center;
+    background-color: #4a4a4a;
+}
+h2 {
+    background-color: #6c757d;
+    font-size: 1.5em;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+th, td {
+    padding: 1rem;
+    text-align: left;
+    border-bottom: 1px solid #dee2e6;
+}
+th {
+    background-color: #f1f3f5;
+    font-weight: 600;
+}
+tr:last-child td {
+    border-bottom: none;
+}
+tr:hover {
+    background-color: #f8f9fa;
+}
+a {
+    color: #05c;
+    text-decoration: none;
+    font-weight: 500;
+}
+a:hover {
+    text-decoration: underline;
+}
+.status {
+    display: inline-block;
+    padding: 0.3em 0.6em;
+    font-size: 0.8em;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: baseline;
+    border-radius: 0.25rem;
+    text-transform: capitalize;
+}
+.head {
+  display: flex;
+  align-items: center;
+  padding: 0.2rem 1rem;
+  background-color: #eff;
+}
+.head > div {
+    margin: 0 0.5rem;
+}
+.head h3 {
+  flex-grow: 1;
+}
+.head h4, .head p {
+  margin: 0.2rem 2rem;
+}
+.artifact {
+    margin-bottom: 2rem;
+}
+.core-packages, .outdated-packages {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+.core-packages h4, .outdated-packages h4 {
+    margin: 0.5rem 0.2rem;
+}
+.core-packages .item, .outdated-packages .item {
+    width: 250px;
+    padding: 0.4rem;
+}
+.core-packages .item > div, .outdated-packages .item > div {
+    margin: 0.2rem 0;
+}
+.core-packages .item.latest {
+    background-color: white;
+    border: 1px solid white;
+}
+.core-packages .item.pending {
+    background-color: #ffe;
+    border: 1px solid #ff8;
+}
+.core-packages .item.pending a {
+    color: #660;
+}
+.core-packages .item.outdated, .outdated-packages .item.outdated {
+    background-color: #fee;
+    border: 1px solid #faa;
+}
+.core-packages .item.outdated a, .outdated-packages .item.outdated a {
+    color: #a00;
+}
+.commit-msg {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.footer {
+    padding: 1rem;
+    text-align: center;
+    font-size: 0.9em;
+    color: #888;
+}
