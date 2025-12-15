@@ -207,7 +207,6 @@ async function fetchArtifactStatus(gitlab: ProjectInfo[]): Promise<ArtifactInfo[
 
                 let pkgs = corePkgs.map(async (pkg) => {
                     let toml_path = arti.pkgUrl + pkg.name + ".toml";
-                    console.log(toml_path);
                     var toml_str = '', toml_parsed = null;
                     try {
                         toml_str = await download(toml_path);
