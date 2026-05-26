@@ -15,7 +15,7 @@ const PROJECTS_TO_TRACK = [
     // critical
     { path: 'redox-os/redox', branch: 'master', pkg: [] },
     { path: 'redox-os/relibc', branch: 'master', pkg: ['relibc'] },
-    { path: 'redox-os/base', branch: 'main', pkg: ['base', 'base-initfs'] },
+    { path: 'redox-os/base', branch: 'main', pkg: ['base'] },
     { path: 'redox-os/bootloader', branch: 'master', pkg: ['bootloader'] },
     { path: 'redox-os/kernel', branch: 'master', pkg: ['kernel'] },
     { path: 'redox-os/redoxfs', branch: 'master', pkg: ['redoxfs'] },
@@ -23,7 +23,7 @@ const PROJECTS_TO_TRACK = [
     { path: 'redox-os/acid', branch: 'master', pkg: ['acid'] },
     { path: 'redox-os/coreutils', branch: 'master', pkg: ['coreutils'] },
     { path: 'redox-os/extrautils', branch: 'master', pkg: ['extrautils'] },
-    { path: 'redox-os/installer', branch: 'master', pkg: [] },
+    { path: 'redox-os/installer', branch: 'master', pkg: ['installer'] },
     { path: 'redox-os/orbital', branch: 'master', pkg: ['orbital'] },
     { path: 'redox-os/orbutils', branch: 'master', pkg: ['orbutils'] },
     { path: 'redox-os/pkgutils', branch: 'master', pkg: ['pkgutils'] },
